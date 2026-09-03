@@ -336,22 +336,65 @@ def add_or_update_employee(data, employee_id=None):
     conn = db()
     now = datetime.now().isoformat(timespec="seconds")
     fields = [
-        "employee_no","name","department","passport_no","nationality","visa_label","visa_index",
-        "permit_type","visa_issue_date","visa_expiry_date","stay_permit_start_date",
-        "stay_permit_expiry_date","last_entry_date","extension_count","sponsor",
-        "responsible_person","notes","active","updated_at"
+        "employee_no",
+        "name",
+        "department",
+        "passport_no",
+        "nationality",
+        "visa_label",
+        "visa_index",
+        "permit_type",
+        "visa_issue_date",
+        "visa_expiry_date",
+        "stay_permit_start_date",
+        "stay_permit_expiry_date",
+        "last_entry_date",
+        "extension_count",
+        "sponsor",
+        "responsible_person",
+        "notes",
+        "active",
+        "updated_at"
     ]
     vals = [data.get(f) for f in fields]
-    if employee_id:
-        sets = ", ".join(f"{f}=?" for f in fields)
-        conn.execute(f"UPDATE employees SET {sets} WHERE id=?", vals + [employee_id])
-    else:
-        conn.execute(f"""
-            INSERT INTO employees ({",".join(fields)},created_at)
-            VALUES ({",".join(["?"]*len(fields))},?)
-        """, vals + [now])
-    conn.commit()
-    conn.close()
+    try:
+        # 1. 明确编辑已有员工
+        if employee_id:
+            sets = ", ".join(f"{f}=?" for f in fields)
+            conn.execute(
+                f"UPDATE employees SET {sets} WHERE id=?",
+                vals + [employee_id]
+            )
+        else:
+            # 2. 新增员工时，先检查员工编号是否已经存在
+            employee_no = str(data.get("employee_no") or "").strip()
+
+            existing = conn.execute(
+                "SELECT id FROM employees WHERE employee_no=?",
+                (employee_no,)
+            ).fetchone()
+            if existing:
+                # 已存在：直接更新，而不是再次 INSERT
+                sets = ", ".join(f"{f}=?" for f in fields)
+                conn.execute(
+                    f"UPDATE employees SET {sets} WHERE id=?",
+                    vals + [existing["id"]]
+                )
+            else:
+                # 不存在：正常新增
+                conn.execute(
+                    f"""
+                    INSERT INTO employees ({",".join(fields)}, created_at)
+                    VALUES ({",".join(["?"] * len(fields))}, ?)
+                    """,
+                    vals + [now]
+                )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def delete_employee(employee_id):
     conn = db()
